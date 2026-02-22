@@ -2,80 +2,79 @@
 
 ## Context
 
-`@gunubin/claude-setup` を npm 公開するにあたり、全コードの品質レビューを実施。以下の問題を発見し、修正する。
-
-## 現状の良い点
-
-- 型安全性: `any` ゼロ、`strict: true`、Union型を適切に使用
-- 未使用 import/export: ゼロ
-- デバッグコード: なし（`console.log` は `--list` 機能の正当な使用のみ）
-- 依存関係: 最小限（ink, meow, react の3つ）
-- パス解決: `os.homedir()` と `path.resolve()` で環境非依存
-- LICENSE (MIT) 存在
+`@gunubin/claude-setup` の npm 公開前レビュー。README、LICENSE、package.json の基本フィールド（license, repository, keywords, publishConfig）は対応済み。残りのコード品質問題を修正する。
 
 ---
 
-## 修正項目
+## 修正済み（確認済）
 
-### 1. `loadPresets()` の JSON.parse エラーハンドリング追加
+- README.md: Install, Usage, MCP Presets, Key Bindings, Data Sources, License 記載済
+- LICENSE: MIT 存在
+- package.json: license, repository, keywords, publishConfig, bin, files 設定済
+- tsup: shebang 付与、ESM、node18 ターゲット
+- 型安全性: `any` ゼロ、`strict: true`
+- パス解決: `os.homedir()` / `path.resolve()` で環境非依存
+- 依存関係: 最小限（ink, meow, react）
+
+---
+
+## 残り修正項目（4件）
+
+### 1. `loadPresets()` の JSON.parse エラーハンドリング
 
 **ファイル**: `src/lib/mcp.ts` L27-39
 
-`files.map()` 内の `JSON.parse` が try-catch なし。壊れた JSON プリセットが1つあると全体がクラッシュする。
+壊れた JSON プリセットが1つあるだけで app 全体がクラッシュする。個別にスキップすべき。
 
 ```typescript
-// 現状: try-catch なし
-return files.map((file) => {
-  const content = JSON.parse(fs.readFileSync(...));
-  ...
-});
-
-// 修正: 個別にtry-catchし、壊れたファイルをスキップ
+// 修正: files.map → files.flatMap + try-catch
 return files.flatMap((file) => {
   try {
-    const content = JSON.parse(fs.readFileSync(...));
-    ...
-    return [preset];
+    const content = JSON.parse(
+      fs.readFileSync(path.join(presetsDir, file), "utf-8"),
+    );
+    const { _meta, ...config } = content;
+    return [{
+      name: path.basename(file, ".json"),
+      description: _meta?.description ?? "No description",
+      tags: _meta?.tags ?? [],
+      requiredEnvVars: _meta?.requiredEnvVars ?? [],
+      config,
+    }];
   } catch {
     return [];
   }
 });
 ```
 
-### 2. `/dev/tty` のエラーハンドリング追加
+### 2. `/dev/tty` の try-catch 追加
 
 **ファイル**: `src/cli.tsx` L41-44
 
-CI/CD パイプラインや Docker コンテナなど `/dev/tty` が存在しない環境で例外スロー。
+CI/CD、Docker コンテナ等で `/dev/tty` が存在しない場合に例外スロー。
 
 ```typescript
-// 現状
-if (!process.stdin.isTTY) {
-  const fd = fs.openSync("/dev/tty", "r");  // 例外の可能性
-  stdinStream = new tty.ReadStream(fd);
-}
-
-// 修正: try-catch でフォールバック
 if (!process.stdin.isTTY) {
   try {
     const fd = fs.openSync("/dev/tty", "r");
     stdinStream = new tty.ReadStream(fd);
   } catch {
-    // /dev/tty が利用不可（CI/CD等）→ process.stdin のまま使用
+    // /dev/tty 利用不可時は process.stdin のまま
   }
 }
 ```
 
-### 3. `.mcp.json` の非プリセットサーバー保持
+### 3. `writeMcpJson()` で非プリセットサーバーを保持
 
-**ファイル**: `src/lib/mcp.ts` の `writeMcpJson()`
+**ファイル**: `src/lib/mcp.ts` L54-66
 
-現状: `.mcp.json` を完全上書き → ユーザーが手動追加した MCP サーバーが消失する。
+ユーザーが手動追加した MCP サーバーが apply 時に消失するデータロスリスク。プリセット管理対象のみ上書きし、それ以外は保持する。
 
 ```typescript
-// 修正: 既存の非プリセットサーバーを保持
 export function writeMcpJson(selectedNames: string[], presets: McpPreset[]) {
   const mcpPath = path.resolve(".mcp.json");
+
+  // 既存サーバーを読み込み
   let existing: Record<string, unknown> = {};
   try {
     const content = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
@@ -84,11 +83,10 @@ export function writeMcpJson(selectedNames: string[], presets: McpPreset[]) {
     // ignore
   }
 
-  // プリセット名のセット
   const presetNames = new Set(presets.map((p) => p.name));
-
-  // 非プリセットサーバーを保持
   const mcpServers: Record<string, unknown> = {};
+
+  // 非プリセット（手動追加）サーバーを保持
   for (const [name, config] of Object.entries(existing)) {
     if (!presetNames.has(name)) {
       mcpServers[name] = config;
@@ -111,26 +109,12 @@ export function writeMcpJson(selectedNames: string[], presets: McpPreset[]) {
 
 **ファイル**: `package.json`
 
-tsup target が `node18` なのに engines 未定義。
+tsup target が node18 なので明示する。
 
 ```json
 "engines": {
   "node": ">=18.0.0"
 }
-```
-
-### 5. `files` フィールドに README.md と LICENSE を追加
-
-**ファイル**: `package.json`
-
-現状 `"files": ["dist"]` のため、npm パッケージに README.md と LICENSE が含まれない。
-
-```json
-"files": [
-  "dist",
-  "README.md",
-  "LICENSE"
-]
 ```
 
 ---
@@ -139,14 +123,14 @@ tsup target が `node18` なのに engines 未定義。
 
 | ファイル | 修正内容 |
 |---------|---------|
-| `src/lib/mcp.ts` | loadPresets() の try-catch、writeMcpJson() のマージロジック |
+| `src/lib/mcp.ts` | loadPresets() try-catch、writeMcpJson() マージロジック |
 | `src/cli.tsx` | /dev/tty の try-catch |
-| `package.json` | engines, files フィールド |
+| `package.json` | engines フィールド追加 |
 
 ## 検証方法
 
-1. `npm run typecheck` で型チェック通過
-2. `npm run build` でビルド成功
-3. `npm pack --dry-run` でパッケージ内容物を確認（README.md, LICENSE 含む）
-4. `node dist/cli.js` で正常動作
-5. `node dist/cli.js --list` で正常出力
+1. `npm run typecheck` → 型チェック通過
+2. `npm run build` → ビルド成功
+3. `npm pack --dry-run` → パッケージ内容確認
+4. `node dist/cli.js` → 正常動作
+5. `node dist/cli.js --list` → 正常出力

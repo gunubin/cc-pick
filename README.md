@@ -1,5 +1,8 @@
 # claude-setup
 
+[![npm version](https://img.shields.io/npm/v/@gunubin/claude-setup)](https://www.npmjs.com/package/@gunubin/claude-setup)
+[![license](https://img.shields.io/npm/l/@gunubin/claude-setup)](./LICENSE)
+
 Interactive CLI for configuring Claude Code MCP servers and plugins per project.
 
 ## Install

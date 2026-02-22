@@ -37,10 +37,16 @@ const mode = cli.flags.mcp
 
 // process.stdin が TTY でない場合（tmux popup の fish -c 経由など）、
 // /dev/tty を直接開いて TTY stdin を確保する
-let stdinStream: NodeJS.ReadableStream = process.stdin;
+let stdinStream: tty.ReadStream | typeof process.stdin = process.stdin;
 if (!process.stdin.isTTY) {
-  const fd = fs.openSync("/dev/tty", "r");
-  stdinStream = new tty.ReadStream(fd);
+  try {
+    const fd = fs.openSync("/dev/tty", "r");
+    stdinStream = new tty.ReadStream(fd);
+  } catch {
+    process.stderr.write(
+      "Warning: no TTY available. Interactive mode may not work.\n",
+    );
+  }
 }
 
 render(<App mode={mode as "mcp" | "plugins" | "both"} />, {

@@ -24,18 +24,24 @@ export function loadPresets(): McpPreset[] {
     .filter((f) => f.endsWith(".json"))
     .sort();
 
-  return files.map((file) => {
-    const content = JSON.parse(
-      fs.readFileSync(path.join(presetsDir, file), "utf-8"),
-    );
-    const { _meta, ...config } = content;
-    return {
-      name: path.basename(file, ".json"),
-      description: _meta?.description ?? "No description",
-      tags: _meta?.tags ?? [],
-      requiredEnvVars: _meta?.requiredEnvVars ?? [],
-      config,
-    };
+  return files.flatMap((file) => {
+    try {
+      const content = JSON.parse(
+        fs.readFileSync(path.join(presetsDir, file), "utf-8"),
+      );
+      const { _meta, ...config } = content;
+      return [
+        {
+          name: path.basename(file, ".json"),
+          description: _meta?.description ?? "No description",
+          tags: _meta?.tags ?? [],
+          requiredEnvVars: _meta?.requiredEnvVars ?? [],
+          config,
+        },
+      ];
+    } catch {
+      return [];
+    }
   });
 }
 
@@ -52,15 +58,31 @@ export function loadCurrentMcp(): string[] {
 }
 
 export function writeMcpJson(selectedNames: string[], presets: McpPreset[]) {
+  const mcpPath = path.resolve(".mcp.json");
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const content = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
+    existing = content.mcpServers ?? {};
+  } catch {
+    // ignore
+  }
+
+  const presetNames = new Set(presets.map((p) => p.name));
   const mcpServers: Record<string, unknown> = {};
+
+  for (const [name, config] of Object.entries(existing)) {
+    if (!presetNames.has(name)) {
+      mcpServers[name] = config;
+    }
+  }
+
   for (const name of selectedNames) {
     const preset = presets.find((p) => p.name === name);
     if (preset) {
       mcpServers[name] = preset.config;
     }
   }
-  fs.writeFileSync(
-    ".mcp.json",
-    JSON.stringify({ mcpServers }, null, 2) + "\n",
-  );
+
+  fs.writeFileSync(mcpPath, JSON.stringify({ mcpServers }, null, 2) + "\n");
 }

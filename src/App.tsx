@@ -241,7 +241,7 @@ export function App({ mode }: Props) {
           flexDirection="column"
           borderStyle="round"
           borderColor="gray"
-          flexGrow={1}
+          width="60%"
           paddingX={1}
         >
           {phase === "confirm" ? (

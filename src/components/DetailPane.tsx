@@ -33,7 +33,7 @@ function McpDetail({ preset }: { preset: McpPreset }) {
     <Box flexDirection="column">
       <Text bold>{preset.name}</Text>
       <Text> </Text>
-      <Text>{preset.description}</Text>
+      <Text wrap="wrap">{preset.description}</Text>
       <Text> </Text>
 
       {preset.tags.length > 0 && (
