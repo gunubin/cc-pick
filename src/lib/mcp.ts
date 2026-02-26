@@ -13,8 +13,7 @@ export interface McpPreset {
 export function loadPresets(): McpPreset[] {
   const presetsDir = path.join(
     os.homedir(),
-    ".config",
-    "claude",
+    ".claude",
     "mcp-presets",
   );
   if (!fs.existsSync(presetsDir)) return [];
